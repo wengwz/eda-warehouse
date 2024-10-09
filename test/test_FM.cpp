@@ -1,6 +1,8 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <set>
+#include <vector>
 #include "fm.h"
 
 using namespace hypergraph;
@@ -29,8 +31,8 @@ HyperGraph<int, int> parse_hypergraph(std::string file_name) {
     {
         assert (token == "NET");
         graph_file >> token;
-        std::cout << "Parse Net: " << token << std::endl;
-        std::vector<IndexType> edge;
+        //std::cout << "Parse Net: " << token << std::endl;
+        std::set<IndexType> edge_nodes_set;
         graph_file >> token;
         while (token != ";") {
             assert(token[0] == 'c');
@@ -38,12 +40,13 @@ HyperGraph<int, int> parse_hypergraph(std::string file_name) {
             IndexType cell_sufix = std::stoi(token.substr(1));
             IndexType node_id = cell_sufix - 1;
             max_node_id = std::max(max_node_id, node_id);
-            edge.push_back(node_id);
+            edge_nodes_set.insert(node_id);
 
             graph_file >> token;
         }
 
-        edge2node_map.push_back(edge);
+        std::vector<IndexType> edge_nodes(edge_nodes_set.begin(), edge_nodes_set.end());
+        edge2node_map.push_back(edge_nodes);
     }
 
     // build hypergraph
@@ -54,6 +57,7 @@ HyperGraph<int, int> parse_hypergraph(std::string file_name) {
     }
 
     for (const std::vector<IndexType>& edge : edge2node_map) {
+        if (edge.size() < 2) continue;
         hypergraph.add_edge(1, edge);
     }
 
@@ -62,9 +66,29 @@ HyperGraph<int, int> parse_hypergraph(std::string file_name) {
     return hypergraph;
 }
 
+void write_hypergraph_hmetis(std::string file_name, const HyperGraph<int, int>& graph) {
+    std::ofstream hmetis_graph_file(file_name);
+    assert(hmetis_graph_file.is_open());
+    hmetis_graph_file << graph.get_edges_num() << " " << graph.get_nodes_num() << std::endl;
+
+    for (IndexType edgeId = 0; edgeId < graph.get_edges_num(); edgeId++) {
+        const std::vector<IndexType>& edge_nodes = graph.get_nodes_of_edge(edgeId);
+        for (int i = 0; i < edge_nodes.size(); i++) {
+            if (i > 0) {
+                hmetis_graph_file << " ";
+            }
+            hmetis_graph_file << edge_nodes[i] + 1;
+        }      
+        hmetis_graph_file << std::endl;
+    }
+
+    hmetis_graph_file.close();
+}
+
 int main() {
-    std::string file_path = "./benchmarks/partition/simple.dat";
+    std::string file_path = "./benchmarks/partition/input_0.dat";
     HyperGraph<int, int> hypergraph = parse_hypergraph(file_path);
+    write_hypergraph_hmetis("./benchmarks/partition/input_0.hgr", hypergraph);
     double epsilon = parse_epsilon(file_path);
     fm_partitioner::FMPartitioner<int, int> partitioner(hypergraph, epsilon);
     

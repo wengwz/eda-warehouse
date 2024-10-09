@@ -8,7 +8,7 @@
 
 namespace hypergraph {
 
-using IndexType = uint32_t;
+using IndexType = int;
 
 
 template<typename WeightType>
@@ -42,7 +42,7 @@ public:
     }
 
     IndexType add_edge(const EdgeWeightType& weight, const std::vector<IndexType>& node_ids) {
-        assert(node_ids.size() >= 2);
+        assert (node_ids.size() >= 0);
         IndexType max_node_id = *(std::max_element(node_ids.begin(), node_ids.end()));
         if (max_node_id >= num_nodes) {
             throw std::runtime_error("Node id out of range");
