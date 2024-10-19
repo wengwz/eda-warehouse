@@ -7,6 +7,7 @@ build
 tmp
 
 benchmarks/partition
+benchmarks/*.json
 
 test/KaHyPar
 test/cut_kKaHyPar_sea20.ini

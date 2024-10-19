@@ -4,7 +4,7 @@
 #include <stack>
 #include "fm.h"
 
-namespace fm_partitioner {
+namespace partition {
 
 template<typename NodeWeightType, typename EdgeWeightType>
 FMPartitioner<NodeWeightType, EdgeWeightType>::FMPartitioner(
@@ -69,11 +69,11 @@ void FMPartitioner<NodeWeightType, EdgeWeightType>::run() {
             MoveGainType node_gain;
             while (true)
             {
-                nodeId = tmp_gain_bucket_array.get_max_gain_id();
+                nodeId = tmp_gain_bucket_array.get_top_id();
                 if (nodeId == -1) { // no more nodes in the bucket array
                     break;
                 }
-                node_gain = tmp_gain_bucket_array.get_gain_of(nodeId);
+                node_gain = tmp_gain_bucket_array.get_value_of(nodeId);
                 tmp_gain_bucket_array.pop();
 
                 if (is_move_legal(nodeId, tmp_node_blk_ids[nodeId], tmp_blk_sizes)) {
@@ -284,7 +284,7 @@ std::vector<EdgeWeightType> FMPartitioner<NodeWeightType, EdgeWeightType>::get_g
 
 template<typename NodeWeightType, typename EdgeWeightType>
 EdgeWeightType FMPartitioner<NodeWeightType, EdgeWeightType>::get_gain_of_node(IndexType nodeId) const {
-    MoveGainType node_gain = gain_bucket_array.get_gain_of(nodeId);
+    MoveGainType node_gain = gain_bucket_array.get_value_of(nodeId);
     return node_gain;
 }
 
@@ -377,13 +377,13 @@ void FMPartitioner<NodeWeightType, EdgeWeightType>::update_bucket_array(IndexTyp
         if (blk2node[to_blk_id].size() == 0) {
             for (IndexType eNodeId : blk2node[from_blk_id]) {
                 if (!bucket_array.has_elem(eNodeId)) continue;
-                MoveGainType node_gain = bucket_array.get_gain_of(eNodeId);
+                MoveGainType node_gain = bucket_array.get_value_of(eNodeId);
                 node_gain += edge_weight;
                 bucket_array.update(eNodeId, node_gain);
             }
 
             if (bucket_array.has_elem(nodeId)) {
-                MoveGainType node_gain = bucket_array.get_gain_of(nodeId);
+                MoveGainType node_gain = bucket_array.get_value_of(nodeId);
                 node_gain += 2 * edge_weight;
                 bucket_array.update(nodeId, node_gain);                
             }
@@ -392,7 +392,7 @@ void FMPartitioner<NodeWeightType, EdgeWeightType>::update_bucket_array(IndexTyp
         if (blk2node[to_blk_id].size() == 1) {
             IndexType eNodeId = blk2node[to_blk_id][0];
             if (bucket_array.has_elem(eNodeId)) {
-                MoveGainType node_gain = bucket_array.get_gain_of(eNodeId);
+                MoveGainType node_gain = bucket_array.get_value_of(eNodeId);
                 node_gain -= edge_weight;
                 bucket_array.update(eNodeId, node_gain);                
             }
@@ -401,13 +401,13 @@ void FMPartitioner<NodeWeightType, EdgeWeightType>::update_bucket_array(IndexTyp
         if (blk2node[from_blk_id].size() == 0) {
             for (IndexType eNodeId : blk2node[to_blk_id]) {
                 if (!bucket_array.has_elem(eNodeId)) continue;
-                MoveGainType node_gain = bucket_array.get_gain_of(eNodeId);
+                MoveGainType node_gain = bucket_array.get_value_of(eNodeId);
                 node_gain -= edge_weight;
                 bucket_array.update(eNodeId, node_gain);
             }
 
             if (bucket_array.has_elem(nodeId)) {
-                MoveGainType node_gain = bucket_array.get_gain_of(nodeId);
+                MoveGainType node_gain = bucket_array.get_value_of(nodeId);
                 node_gain -= 2 * edge_weight;
                 bucket_array.update(nodeId, node_gain);                
             }
@@ -416,7 +416,7 @@ void FMPartitioner<NodeWeightType, EdgeWeightType>::update_bucket_array(IndexTyp
         if (blk2node[from_blk_id].size() == 1) {
             IndexType eNodeId = blk2node[from_blk_id][0];
             if (bucket_array.has_elem(eNodeId)) {
-                MoveGainType node_gain = bucket_array.get_gain_of(eNodeId);
+                MoveGainType node_gain = bucket_array.get_value_of(eNodeId);
                 node_gain += edge_weight;
                 bucket_array.update(eNodeId, node_gain);                
             }

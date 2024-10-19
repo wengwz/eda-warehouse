@@ -90,7 +90,7 @@ int main() {
     HyperGraph<int, int> hypergraph = parse_hypergraph(file_path);
     write_hypergraph_hmetis("./benchmarks/partition/input_0.hgr", hypergraph);
     double epsilon = parse_epsilon(file_path);
-    fm_partitioner::FMPartitioner<int, int> partitioner(hypergraph, epsilon);
+    partition::FMPartitioner<int, int> partitioner(hypergraph, epsilon);
     
     partitioner();
     return 0;

@@ -3,7 +3,7 @@
 #include <cassert>
 
 #include "bucket_array.h"
-using namespace fm_partitioner;
+using namespace partition;
 int main() {
 
     // test case
@@ -11,7 +11,7 @@ int main() {
     std::vector<int> gains = {-1, 2, 8, 9, 20, 22, 99, 100, -8, 9, 11, 2, 8};
     std::vector<int> sorted_gains = {100, 99, 22, 20, 11, 9, 9, 8, 8, 2, 2, -1, -8};
 
-    GainBucketArray<int, int> bucket_array(max_id);
+    PriorityBucketArray<int, int> bucket_array(max_id);
 
     // test insert, pop and getters
     std::cout << "Test insert, pop, and getters" << std::endl;
@@ -24,14 +24,14 @@ int main() {
 
     std::cout << "Test get_gain_of function" << std::endl;
     for (int i = 0; i < gains.size(); i++) {
-        int gain = bucket_array.get_gain_of(i);
+        int gain = bucket_array.get_value_of(i);
         assert(gain == gains[i]);
     }
 
     std::cout << "Test get_max_gain_id and pop function" << std::endl;
     for (int i = 0; i < sorted_gains.size(); i++) {
-        int id = bucket_array.get_max_gain_id();
-        int gain = bucket_array.get_gain_of(id);
+        int id = bucket_array.get_top_id();
+        int gain = bucket_array.get_value_of(id);
         assert(gain == sorted_gains[i]);
         bucket_array.pop();
     }
@@ -53,12 +53,13 @@ int main() {
     }
     
     for (int i = 0; i < new_sorted_gains.size(); i++) {
-        int id = bucket_array.get_max_gain_id();
-        int gain = bucket_array.get_gain_of(id);
+        int id = bucket_array.get_top_id();
+        int gain = bucket_array.get_value_of(id);
         assert(gain == new_sorted_gains[i]);
         bucket_array.remove(id);
     }
 
+    bucket_array.insert(1, 5);
     std::cout << "All tests passed" << std::endl;
 
     return 0;

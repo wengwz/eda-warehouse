@@ -2,6 +2,7 @@
 #define _HYPER_GRAPH_H_
 
 #include <vector>
+#include <set>
 #include <cstdint>
 #include <cassert>
 #include <algorithm>
@@ -89,6 +90,11 @@ public:
         return edges[edgeId].node_ids.size();
     }
 
+    IndexType get_degree_of_node(IndexType nodeId) const {
+        // return the number of edges incident to nodeId
+        return nodes[nodeId].edge_ids.size();
+    }
+
     const std::vector<IndexType>& get_nodes_of_edge(IndexType edgeId) const {
         return edges[edgeId].node_ids;
     }
@@ -119,6 +125,20 @@ public:
             total_weight += edge.weight;
         }
         return total_weight;
+    }
+
+    std::vector<IndexType> get_neighbors_of_node(IndexType nodeId) const {
+        std::set<IndexType> neighbors_set;
+        for (IndexType edgeId : get_edges_of_node(nodeId)) {
+            for (IndexType neighborId : edges[edgeId].node_ids) {
+                if (neighborId != nodeId) {
+                    neighbors_set.insert(neighborId);
+                }
+            }
+        }
+
+        std::vector<IndexType> neighbors(neighbors_set.begin(), neighbors_set.end());
+        return neighbors;
     }
 
 private:

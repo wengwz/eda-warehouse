@@ -4,9 +4,8 @@
 
 #include "hypergraph.h"
 #include "bucket_array.h"
-
-namespace fm_partitioner {
 using namespace hypergraph;
+namespace partition {
 
 // 2-Way Fiduccia-Mattheyses Partitioner
 template<typename NodeWeightType, typename EdgeWeightType>
@@ -14,7 +13,7 @@ class FMPartitioner {
     using HyperGraphType = HyperGraph<NodeWeightType, EdgeWeightType>;
     using MoveGainType = EdgeWeightType;
     using BlkSizeType = NodeWeightType;
-    using BucketArrayType = GainBucketArray<MoveGainType, IndexType>;
+    using BucketArrayType = PriorityBucketArray<MoveGainType, IndexType>;
     using PartitionResType = std::vector<IndexType>;
 
 public:
@@ -30,7 +29,7 @@ public:
         double epsilon
     );
 
-    void operator()() { run() };
+    void operator()() { run(); };
 
     void run(); // kernel function of partitioning
 
