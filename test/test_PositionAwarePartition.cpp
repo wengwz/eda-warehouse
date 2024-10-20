@@ -77,6 +77,7 @@ int main(int argc, char** argv) {
         assert(i == partitionGroups[i].id);
         // use the amount of LUTs as weight of nodes
         netlist_graph.add_node(partitionGroups[i].resourceTypeUtil.LUT);
+        //netlist_graph.add_node(partitionGroups[i].primCellNum);
     }
 
     std::cout << "Start parsing edge information" << std::endl;
@@ -102,4 +103,21 @@ int main(int argc, char** argv) {
         grid_width, grid_height, grid_limits, netlist_graph
     );
     partition.run();
+
+
+    // output partition result
+    json output_json;
+    std::vector<int> grid_dim = {grid_width, grid_height};
+    std::vector<std::vector<int>> partition_result;
+    for (int i = 0; i < nodes_num; i++) {
+        int blk_id = partition.get_blk_of_node(i);
+        int x = blk_id % grid_width;
+        int y = blk_id / grid_width;
+        partition_result.push_back({x, y});
+    }
+    output_json["gridDimension"] = grid_dim;
+    output_json["partitionResult"] = partition_result;
+
+    std::ofstream output_json_file(output_json_path);
+    output_json_file << output_json.dump(4);
 }

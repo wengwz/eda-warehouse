@@ -26,6 +26,7 @@ class PositionAwarePartition {
     using BlkSizeType = NodeWeightType;
 
     using CddtNumPriorityBucket = MinPriorityBucketArray<IndexType, IndexType>;
+    using BlockGainPair = std::pair<IndexType, MoveGainType>;
 
 public:
     PositionAwarePartition(
@@ -51,14 +52,23 @@ public:
         return node2blk_id[nodeId];
     }
 
+    CutSizeType get_cut_size_of_node(IndexType nodeId) const;
+
+    // debug functions
+    std::string get_partition_info() const;
+    std::string get_block_info() const;
+    std::string get_netlist_info() const;
+
 private:
     void build_blk_graph(int width, int height, const std::vector<NodeWeightType>& blk_size_constr);
     void init_partition();
 
-    IndexType get_max_gain_blk(IndexType nodeId, const std::vector<bool>& cddt_blks);
-    CutSizeType get_cut_size_of_node(IndexType nodeId) const;
+    BlockGainPair get_max_gain_blk(IndexType nodeId);
+    BlockGainPair get_max_gain_blk(std::map<IndexType, std::vector<IndexType>>& blk2node_map);
+    
+    IndexType get_initial_blk(IndexType nodeId);
     CutSizeType get_cut_size_of_node(IndexType nodeId, const std::vector<IndexType>& node2blk) const;
-    //std::vector<IndexType> move_node(IndexType nodeId, IndexType new_blk);
+    
     bool move_node(IndexType nodeId, IndexType new_blk);
 
     const std::vector<IndexType>& get_neighbors_of_blk(IndexType blkId, int dist) const;
@@ -79,9 +89,6 @@ private:
     // debug functions
     void check_partition();
     void show_neighbors(IndexType nodeId);
-    std::string get_partition_info() const;
-    std::string get_block_info() const;
-    std::string get_netlist_info() const;
 
 private:
 

@@ -16,6 +16,7 @@ PositionAwarePartition<NodeWeightType, EdgeWeightType>::PositionAwarePartition(
     build_blk_graph(width, height, blk_size_constr);
     this->netlist_graph = netlist_graph;
 
+    std::cout << "Netlist Info: " << std::endl << get_netlist_info() << std::endl;
     // init partition
     init_partition();
 
@@ -27,28 +28,96 @@ PositionAwarePartition<NodeWeightType, EdgeWeightType>::PositionAwarePartition(
 template<typename NodeWeightType, typename EdgeWeightType>
 void PositionAwarePartition<NodeWeightType, EdgeWeightType>::run() {
 
-    //
-    // MoveGainType move_gain = 0;
-    // IndexType iter_count = 0;
-
-    // std::random_device rd;
-    // std::default_random_engine rd_gen(rd());
+    IndexType iter_count = 0;
     
-    // while (move_gain > 0 || iter_count == 0) {
-    //     std::vector<IndexType> nodes;
-    //     for (IndexType nodeId = 0; nodeId < netlist_graph.get_nodes_num(); nodeId++) {
-    //         nodes.push_back(nodeId);
-    //     }
-    //     std::shuffle(nodes.begin(), nodes.end(), rd_gen);
+    std::random_device rd;
+    std::default_random_engine rd_gen(rd());
 
-    //     for (IndexType nodeId : nodes) {
-    //         MoveGainType max_gain_blk = get_max_gain_blk(nodeId, node2cddt_blks[nodeId]);
-    //     }
+    std::cout << "Start Edge-Based Partition Refinement" << std::endl;
+    while (true) {
+        std::cout << "Iteration-" << iter_count << ": "<< std::endl;
+        std::vector<IndexType> edges;
+        for (IndexType edgeId = 0; edgeId < netlist_graph.get_edges_num(); edgeId++) {
+            edges.push_back(edgeId);
+        }
+        std::shuffle(edges.begin(), edges.end(), rd_gen);
 
-    //     std::cout << "Iteration-" << iter_count << "  " << get_partition_info() << std::endl;
-    // }
+        MoveGainType iter_gain = 0;
+        for (IndexType edgeId : edges) {
+            std::vector<IndexType> edge_blks;
+            std::map<IndexType, std::vector<IndexType>> blk2node_map;
+            for (IndexType nodeId : netlist_graph.get_nodes_of_edge(edgeId)) {
+                IndexType blkId = node2blk_id[nodeId];
+                if (blk2node_map.count(blkId) == 0) {
+                    edge_blks.push_back(blkId);
+                    blk2node_map[blkId] = {nodeId};
+                } else {
+                    blk2node_map[blkId].push_back(nodeId);
+                }
+            }
+            assert(blk2node_map.size() <= 2);
 
+            if (blk2node_map.size() == 1) continue;
+            auto [from_blkId, moves_gain] = get_max_gain_blk(blk2node_map);
+            if (from_blkId != 1 && moves_gain > 0) {
+                IndexType to_blkId = edge_blks[0] == from_blkId ? edge_blks[1] : edge_blks[0];
+                std::cout << "Trial Move nodes of edge-" << edgeId << " from blk-" << from_blkId << " to blk-" << to_blkId << " gain=" << moves_gain << std::endl;
+                for (IndexType nodeId : blk2node_map[from_blkId]) {
+                    move_node(nodeId, to_blkId);
+                }
+                iter_gain += moves_gain;
+            }
+        }
+
+        if (iter_gain == 0) {
+            break;
+        }
+        iter_count++;
+    }
+    std::cout << "Complete Edge-Based Partition Refinement" << std::endl;
+
+    std::cout << "Start Node-Based Partition Refinement" << std::endl;
+    iter_count = 0;
+    while (true) {
+        std::cout << "Iteration-" << iter_count << ": "<< std::endl;
+        MoveGainType iter_gain = 0;
+        
+        std::vector<IndexType> nodes;
+        for (IndexType nodeId = 0; nodeId < netlist_graph.get_nodes_num(); nodeId++) {
+            nodes.push_back(nodeId);
+        }
+        std::shuffle(nodes.begin(), nodes.end(), rd_gen);
+
+        std::vector<IndexType> origin_node2blk_id = node2blk_id;
+
+        for (IndexType nodeId : nodes) {
+            auto [max_gain_blk, max_gain] = get_max_gain_blk(nodeId);
+
+            if (max_gain_blk != -1 && max_gain >= 0) {
+                std::cout << "Trial Move node-" << nodeId << " from blk-" << node2blk_id[nodeId] << " to blk-" << max_gain_blk << " gain=" << max_gain << std::endl;
+                move_node(nodeId, max_gain_blk);
+                iter_gain += max_gain;
+            }
+        }
+
+        if (iter_gain == 0) {
+            for (IndexType nodeId = 0; nodeId < netlist_graph.get_nodes_num(); nodeId++) {
+                move_node(nodeId, origin_node2blk_id[nodeId]);
+            }
+        }
+
+        std::cout << "Total Gain of Iteration-" << iter_count << ": " << iter_gain << std::endl;
+        std::cout << "Partition Results of Iteration-" << iter_count << ": " << get_partition_info() << std::endl;
+        iter_count++;
+
+        if (iter_gain == 0) {
+            break;
+        }
+    }
+
+    std::cout << "Complete Node-Based Partition Refinement" << std::endl;
     //
+
     check_partition();
 }
 
@@ -146,10 +215,10 @@ void PositionAwarePartition<NodeWeightType, EdgeWeightType>::init_partition() {
     while (!cddt_blk_num_pq.empty()) {
         IndexType nodeId = cddt_blk_num_pq.get_top_id();
 
-        //std::cout << std::endl << "Init Partition of node-" << nodeId  << " " << netlist_graph.get_weight_of_node(nodeId) << std::endl;
-        //std::cout << "Num of Candidates: " << get_cddt_blks_num(node2cddt_blks[nodeId]) << std::endl;
+        std::cout << std::endl << "Init Partition of node-" << nodeId  << " " << netlist_graph.get_weight_of_node(nodeId) << std::endl;
+        std::cout << "Num of Candidates: " << get_cddt_blks_num(node2cddt_blks[nodeId]) << std::endl;
         
-        IndexType max_gain_blk = get_max_gain_blk(nodeId, node2cddt_blks[nodeId]);
+        IndexType max_gain_blk = get_initial_blk(nodeId);
         if (max_gain_blk == -1) {
             show_neighbors(nodeId);
         }
@@ -173,37 +242,123 @@ void PositionAwarePartition<NodeWeightType, EdgeWeightType>::init_partition() {
 }
 
 template<typename NodeWeightType, typename EdgeWeightType>
-IndexType PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_max_gain_blk(IndexType nodeId, const std::vector<bool>& cddt_blks) {
-    std::cout << "Start finding max gain block for node-" << nodeId << std::endl;
-    IndexType max_gain;
+typename PositionAwarePartition<NodeWeightType, EdgeWeightType>::BlockGainPair 
+PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_max_gain_blk(IndexType nodeId) {
+    //std::cout << "Start finding max gain block for node-" << nodeId << std::endl;
+    IndexType max_gain = 0;
     IndexType max_gain_blk = -1;
-
-    NodeWeightType min_blk_size;
-    IndexType min_blk_id = -1;
 
     // calculate original num of cut related with nodeId
     IndexType orig_blk_id = node2blk_id[nodeId];
     CutSizeType orig_cut_size = get_cut_size_of_node(nodeId);
 
+    const std::vector<bool>& cddt_blks = node2cddt_blks[nodeId];
     for (IndexType blkId = 0; blkId < get_blk_num(); ++blkId) {
-        if (cddt_blks[blkId] == false || blkId == get_blk_of_node(nodeId)) {
-            //std::cout << "Block-" << blkId << " is not candidate" << std::endl;
+        if (!cddt_blks[blkId] || blkId == get_blk_of_node(nodeId)) {
             continue;
         }
 
-        NodeWeightType blk_size = blk_sizes[blkId] + netlist_graph.get_weight_of_node(nodeId);
+        NodeWeightType new_blk_size = blk_sizes[blkId] + netlist_graph.get_weight_of_node(nodeId);
         NodeWeightType blk_size_limit = block_graph.get_weight_of_node(blkId);
 
-        if (blk_size > blk_size_limit) {
-            //std::cout << "Block-" << blkId << " is full" << std::endl;
+        if (new_blk_size > blk_size_limit) {
+            continue; // avoid overflow of block
+        }
+
+        // trail move nodeId to blkId and get new cut size
+        node2blk_id[nodeId] = blkId;
+        CutSizeType trail_cut_size = get_cut_size_of_node(nodeId);
+        // recover partition result
+        node2blk_id[nodeId] = orig_blk_id;
+        CutSizeType move_gain = orig_cut_size - trail_cut_size;
+
+        if (max_gain_blk == -1 || move_gain > max_gain) {
+            max_gain = move_gain;
+            max_gain_blk = blkId;
+        }
+    }
+    return {max_gain_blk, max_gain};
+}
+
+template<typename NodeWeightType, typename EdgeWeightType>
+typename PositionAwarePartition<NodeWeightType, EdgeWeightType>::BlockGainPair
+PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_max_gain_blk(std::map<IndexType, std::vector<IndexType>>& blk2node_map) {
+    // get block to be moved with maximum gain for a cut edge
+    IndexType max_gain_blk = -1;
+    CutSizeType max_gain = 0;
+
+    std::vector<IndexType> edge_blks;
+    for (const auto& [blkId, nodes]: blk2node_map) {
+        edge_blks.push_back(blkId);
+    }
+    assert(edge_blks.size() == 2);
+
+    for (int i = 0; i < edge_blks.size(); i++) {
+        IndexType from_blkId = edge_blks[i];
+        IndexType to_blkId = edge_blks[1 - i];
+
+        const std::vector<IndexType>& from_blk_nodes = blk2node_map[from_blkId];
+
+        // check if move from_blkId to to_blkId is legal
+        bool all_has_cddt_blk = true;
+        BlkSizeType new_blk_size = blk_sizes[to_blkId];
+        for (IndexType nodeId : from_blk_nodes) {
+            if (!node2cddt_blks[nodeId][to_blkId]) {
+                all_has_cddt_blk = false;
+            }
+            new_blk_size += netlist_graph.get_weight_of_node(nodeId);
+        }
+        BlkSizeType blk_size_limit = block_graph.get_weight_of_node(to_blkId);
+        if (new_blk_size > blk_size_limit || !all_has_cddt_blk) {
+            continue; // avoid overflow of block
+        }
+
+        // calculate gain of moving from_blkId to to_blkId
+        MoveGainType moves_gain = 0;
+        for (IndexType nodeId : from_blk_nodes) {
+            CutSizeType orig_cut_size = get_cut_size_of_node(nodeId);
+            node2blk_id[nodeId] = to_blkId;
+            CutSizeType new_cut_size = get_cut_size_of_node(nodeId);
+            moves_gain += orig_cut_size - new_cut_size;
+        }
+
+        // recover partition result
+        for (IndexType nodeId : from_blk_nodes) {
+            node2blk_id[nodeId] = from_blkId;
+        }
+
+        if (max_gain_blk == -1 || moves_gain > max_gain) {
+            max_gain_blk = from_blkId;
+            max_gain = moves_gain;
+        }
+    }
+
+    return {max_gain_blk, max_gain};
+}
+
+template<typename NodeWeightType, typename EdgeWeightType>
+IndexType PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_initial_blk(IndexType nodeId) {
+    // get initial block for node
+    // return the block with minimum size
+    NodeWeightType min_blk_size;
+    IndexType min_blk_id = -1;
+
+    const std::vector<bool>& cddt_blks = node2cddt_blks[nodeId];
+    for (IndexType blkId = 0; blkId < get_blk_num(); ++blkId) {
+        if (cddt_blks[blkId] == false || blkId == get_blk_of_node(nodeId)) {
+            continue;
+        }
+
+        // check if move nodeId to blkId results in block overflow
+        BlkSizeType blk_size_limit = block_graph.get_weight_of_node(blkId);
+        BlkSizeType new_blk_size = blk_sizes[blkId] + netlist_graph.get_weight_of_node(nodeId);
+        if (new_blk_size > blk_size_limit) {
             continue; // avoid overflow of block
         }
 
         // check if this move results in no candidate blks for neighboring nodes
-        // TODO:
         Dist2IndexMap dist2neighbors = get_dist2idx_map(netlist_graph, nodeId, get_max_dist_of_blk(blkId));
         bool all_has_cddt_blk = true;
-        EdgeWeightType gain = 0;
         for (int dist = 1; dist < dist2neighbors.size(); dist++) {
 
             for (IndexType nNodeId : dist2neighbors[dist]) {
@@ -214,41 +369,19 @@ IndexType PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_max_gain_b
                     std::cout << "No candidate blks for node-" << nNodeId << "if move to blk-" << blkId << std::endl;
                     break;
                 }
-
-                IndexType new_cddt_num = get_cddt_blks_num(new_cddt_blks);
-                IndexType origin_cddt_num = get_cddt_blks_num(node2cddt_blks[nNodeId]);
-                gain += new_cddt_num - origin_cddt_num;
             }
 
-            if (!all_has_cddt_blk) {
-                break;
+            if (!all_has_cddt_blk) break;
+        }
+
+        if (all_has_cddt_blk) {
+            if (min_blk_id == -1 || new_blk_size < min_blk_size) {
+                min_blk_size = new_blk_size;
+                min_blk_id = blkId;
             }
-        }
-
-        if (!all_has_cddt_blk) {
-            continue; // avoid cases of no candidate blks for neighboring nodes
-        }
-
-        // // trail move nodeId to blkId and get new cut size
-        // node2blk_id[nodeId] = blkId;
-        // CutSizeType trail_cut_size = get_cut_size_of_node(nodeId);
-        // // recover partition result
-        // node2blk_id[nodeId] = orig_blk_id;
-
-        //CutSizeType gain = orig_cut_size - trail_cut_size;
-
-        if (max_gain_blk == -1 || gain > max_gain) {
-            max_gain = gain;
-            max_gain_blk = blkId;
-        }
-
-        if (min_blk_id == -1 || blk_size < min_blk_size) {
-            min_blk_size = blk_size;
-            min_blk_id = blkId;
         }
     }
 
-    //return max_gain_blk;
     return min_blk_id;
 }
 
@@ -281,8 +414,10 @@ PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_cut_size_of_node(Ind
 template<typename NodeWeightType, typename EdgeWeightType>
 bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType nodeId, IndexType new_blk) {
     // move nodeId to new_blk and update partition states
-    // return nodes with number of cddt blks changed
-    
+    if (node2blk_id[nodeId] == new_blk) {
+        return true;
+    }
+
     IndexType orig_blk = node2blk_id[nodeId];
     CutSizeType orig_cut_size = get_cut_size_of_node(nodeId);
 
@@ -296,7 +431,6 @@ bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType
     // update candidate block of neighbors
     int max_dist = get_max_dist_of_blk(new_blk);
     Dist2IndexMap dist2node_map = get_dist2idx_map(netlist_graph, nodeId, max_dist);
-    //std::vector<IndexType> cddt_changed_nodes;
     
     for (int dist = 1; dist < dist2node_map.size(); dist++) {
         std::vector<bool> new_cddt_blks(get_blk_num(), false);
@@ -305,12 +439,7 @@ bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType
         }
 
         for (IndexType nNodeId : dist2node_map[dist]) {
-            //IndexType origin_cddt_num = get_cddt_blks_num(node2cddt_blks[nNodeId]);
             node2cddt_blks[nNodeId] = merge_cddt_blks(node2cddt_blks[nNodeId], new_cddt_blks);
-            //IndexType new_cddt_num = get_cddt_blks_num(node2cddt_blks[nNodeId]);
-            // if (origin_cddt_num != new_cddt_num) {
-            //     cddt_changed_nodes.push_back(nNodeId);
-            // }
         }
     }
 
@@ -325,7 +454,6 @@ bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType
         blk_sizes[orig_blk] -= node_weight;
     }
     
-    //return cddt_changed_nodes;
     return true;
 }
 
@@ -526,8 +654,8 @@ template<typename NodeWeightType, typename EdgeWeightType>
 std::string PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_netlist_info() const {
     std::stringstream info;
 
-    info << "Num of Nodes: " << netlist_graph.get_nodes_num() << " ";
-    info << "Num of Edges: " << netlist_graph.get_edges_num() << " ";
+    info << "Num of Nodes: " << netlist_graph.get_nodes_num() << " " << "Total Weight: " << netlist_graph.get_total_node_weight() << " " << std::endl;
+    info << "Num of Edges: " << netlist_graph.get_edges_num() << " " << "Total Weight: " << netlist_graph.get_total_edge_weight() << " ";
     return info.str();
 }
 
