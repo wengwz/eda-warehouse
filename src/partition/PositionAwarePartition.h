@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <queue>
+#include <stack>
 #include <map>
 #include <set>
 
@@ -27,6 +28,7 @@ class PositionAwarePartition {
 
     using CddtNumPriorityBucket = MinPriorityBucketArray<IndexType, IndexType>;
     using BlockGainPair = std::pair<IndexType, MoveGainType>;
+    using NodeBlockPair = std::pair<IndexType, IndexType>;
 
 public:
     PositionAwarePartition(
@@ -66,10 +68,10 @@ private:
     BlockGainPair get_max_gain_blk(IndexType nodeId);
     BlockGainPair get_max_gain_blk(std::map<IndexType, std::vector<IndexType>>& blk2node_map);
     
-    IndexType get_initial_blk(IndexType nodeId);
+    std::queue<IndexType> get_initial_blks(IndexType nodeId);
     CutSizeType get_cut_size_of_node(IndexType nodeId, const std::vector<IndexType>& node2blk) const;
     
-    bool move_node(IndexType nodeId, IndexType new_blk);
+    std::vector<NodeBlockPair> move_node(IndexType nodeId, IndexType new_blk);
 
     const std::vector<IndexType>& get_neighbors_of_blk(IndexType blkId, int dist) const;
     std::vector<IndexType> get_neighbors_of_node(IndexType nodeId, int dist);
@@ -86,11 +88,19 @@ private:
     std::vector<bool> get_cddt_blks(IndexType blkId, int dist) const;
     std::vector<bool> get_cddt_blks(IndexType nodeId) const;
 
+    MoveGainType get_move_gain(IndexType nodeId, IndexType blkId);
+
     // debug functions
     void check_partition();
     void show_neighbors(IndexType nodeId);
 
 private:
+    // partition states stored for backtracing during initial partition
+    struct BacktraceInfo {
+        IndexType nodeId;
+        std::queue<IndexType> cddt_blks;
+        std::vector<NodeBlockPair> node2blk_pairs;
+    };
 
     // hypergraph of netlist and blocks
     NetlistGraphType netlist_graph;
@@ -107,6 +117,7 @@ private:
     //// node states
     std::vector<IndexType> node2blk_id;
     std::vector<std::vector<bool>> node2cddt_blks;
+
 };
 
 template class PositionAwarePartition<int, int>;

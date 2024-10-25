@@ -191,49 +191,101 @@ void PositionAwarePartition<NodeWeightType, EdgeWeightType>::init_partition() {
         node2cddt_blks.push_back(std::vector<bool>(get_blk_num(), true));
     }
 
-    // insert nodes into priority queue
-    using pair_type = std::pair<NodeWeightType, IndexType>;
-    struct NodeWeightCmp
-    {
-        bool operator()(const pair_type p1, pair_type p2) {
-            return p1.first > p2.first;
-        }
-    };
-    std::priority_queue<pair_type, std::vector<pair_type>, NodeWeightCmp> node_weight_pq;
+    //insert nodes into priority queue according to its weight
+    // using pair_type = std::pair<NodeWeightType, IndexType>;
+    // struct NodeWeightCmp
+    // {
+    //     bool operator()(const pair_type p1, pair_type p2) {
+    //         return p1.first > p2.first;
+    //     }
+    // };
+    // std::priority_queue<pair_type, std::vector<pair_type>, NodeWeightCmp> node_weight_pq;
+    // for (IndexType nodeId = 0; nodeId < netlist_graph.get_nodes_num(); nodeId++) {
+    //     node_weight_pq.push({netlist_graph.get_weight_of_node(nodeId), nodeId});
+    // }
+    // while (!node_weight_pq.empty())
+    // {
+    //     pair_type node_pair = node_weight_pq.top();
+    //     node_weight_pq.pop();
+    //     cddt_blk_num_pq.insert(node_pair.second, get_blk_num());
+    // }
+
+    std::random_device rd;
+    std::default_random_engine rd_gen(rd());
+    std::vector<IndexType> nodes;
     for (IndexType nodeId = 0; nodeId < netlist_graph.get_nodes_num(); nodeId++) {
-        node_weight_pq.push({netlist_graph.get_weight_of_node(nodeId), nodeId});
+        nodes.push_back(nodeId);
     }
-    while (!node_weight_pq.empty())
-    {
-        pair_type node_pair = node_weight_pq.top();
-        node_weight_pq.pop();
-        cddt_blk_num_pq.insert(node_pair.second, get_blk_num());
+    std::shuffle(nodes.begin(), nodes.end(), rd_gen);
+    for (IndexType nodeId : nodes) {
+        cddt_blk_num_pq.insert(nodeId, get_blk_num());
     }
     
     // initialize each node to blocks
     IndexType node_count = 0;
+    std::stack<BacktraceInfo> backtrace_stack;
     while (!cddt_blk_num_pq.empty()) {
         IndexType nodeId = cddt_blk_num_pq.get_top_id();
 
-        std::cout << std::endl << "Init Partition of node-" << nodeId  << " " << netlist_graph.get_weight_of_node(nodeId) << std::endl;
-        std::cout << "Num of Candidates: " << get_cddt_blks_num(node2cddt_blks[nodeId]) << std::endl;
+        std::cout << std::endl << "Init partition of node-" << nodeId  << " weight=" << netlist_graph.get_weight_of_node(nodeId);
+        std::cout << " cddt_num=" << get_cddt_blks_num(node2cddt_blks[nodeId]) << std::endl;
         
-        IndexType max_gain_blk = get_initial_blk(nodeId);
-        if (max_gain_blk == -1) {
-            show_neighbors(nodeId);
+        IndexType blkId;
+        std::queue<IndexType> initial_blks = get_initial_blks(nodeId);
+        if (!initial_blks.empty()) {
+            blkId = initial_blks.front();
+            initial_blks.pop();
+            cddt_blk_num_pq.pop();
+        } else {
+            assert(false);
+            std::cout << "No candidate blocks for node-" << nodeId << std::endl;
+            std::cout << "Start backtracing" << std::endl;
+            while (true) {
+                assert(!backtrace_stack.empty());
+                BacktraceInfo backtrace_info = backtrace_stack.top();
+                backtrace_stack.pop();
+
+                // recover partition states
+                IndexType recover_nodeId = backtrace_info.nodeId;
+                IndexType recover_blkId = node2blk_id[recover_nodeId];
+                
+                CutSizeType cur_cut_size = get_cut_size_of_node(recover_nodeId);
+                node2blk_id[recover_nodeId] = -1;
+                CutSizeType new_cut_size = get_cut_size_of_node(backtrace_info.nodeId);
+                cut_size += new_cut_size - cur_cut_size;
+                blk_sizes[recover_blkId] -= netlist_graph.get_weight_of_node(recover_nodeId);
+                for (const auto& [nNodeId, blkId] : backtrace_info.node2blk_pairs) {
+                    node2cddt_blks[nNodeId][blkId] = true;
+                    cddt_blk_num_pq.update(nNodeId, get_cddt_blks_num(node2cddt_blks[nNodeId]));
+                }
+
+                std::cout << "Backtrace to initial partition of node-" << recover_nodeId << std::endl;
+
+                if (backtrace_info.cddt_blks.empty()) {
+                    cddt_blk_num_pq.insert(recover_nodeId, get_cddt_blks_num(node2cddt_blks[recover_nodeId]));
+                } else {
+                    nodeId = recover_nodeId;
+                    blkId = backtrace_info.cddt_blks.front();
+                    backtrace_info.cddt_blks.pop();
+                    initial_blks = backtrace_info.cddt_blks;
+                    break;
+                }
+            }
+            //show_neighbors(nodeId);
         }
-        assert(max_gain_blk != -1);
 
-        move_node(nodeId, max_gain_blk); // update partition states
-
-        cddt_blk_num_pq.pop();
+        std::vector<NodeBlockPair> node2blk_pairs = move_node(nodeId, blkId); // update partition states
+        backtrace_stack.push({nodeId, initial_blks, node2blk_pairs}); // record partition info for backtracing
 
         // update cddt_blk_num_pq
-        for (IndexType nNodeId : get_neighbors_of_node(nodeId, get_max_dist_of_blk(max_gain_blk))) {
-            cddt_blk_num_pq.update(nNodeId, get_cddt_blks_num(node2cddt_blks[nNodeId]));
+        // for (IndexType nNodeId : get_neighbors_of_node(nodeId, get_max_dist_of_blk(max_gain_blk))) {
+        //     cddt_blk_num_pq.update(nNodeId, get_cddt_blks_num(node2cddt_blks[nNodeId]));
+        // }
+        for (const auto& [node, blk] : node2blk_pairs) {
+            cddt_blk_num_pq.update(node, get_cddt_blks_num(node2cddt_blks[node]));
         }
         
-        std::cout << "Node-" << nodeId << " is initialized to block-" << max_gain_blk << std::endl;
+        std::cout << "Node-" << nodeId << " is initialized to block-" << blkId << std::endl;
         std::cout << "Partition Info: " << get_partition_info() << std::endl;
         std::cout << "Num of Nodes Initialized: " << ++node_count << std::endl << std::endl;
     }
@@ -337,15 +389,24 @@ PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_max_gain_blk(std::ma
 }
 
 template<typename NodeWeightType, typename EdgeWeightType>
-IndexType PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_initial_blk(IndexType nodeId) {
+std::queue<IndexType> PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_initial_blks(IndexType nodeId) {
+    assert(get_blk_of_node(nodeId) == -1);
+
     // get initial block for node
     // return the block with minimum size
     NodeWeightType min_blk_size;
     IndexType min_blk_id = -1;
 
+    // //
+    // MoveGainType max_gain;
+    // IndexType max_gain_blk = -1;
+    std::vector<BlockGainPair> blk2gain_pairs;
+    
+    CutSizeType orig_cut_size = get_cut_size_of_node(nodeId);
     const std::vector<bool>& cddt_blks = node2cddt_blks[nodeId];
+
     for (IndexType blkId = 0; blkId < get_blk_num(); ++blkId) {
-        if (cddt_blks[blkId] == false || blkId == get_blk_of_node(nodeId)) {
+        if (cddt_blks[blkId] == false) {
             continue;
         }
 
@@ -379,10 +440,34 @@ IndexType PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_initial_bl
                 min_blk_size = new_blk_size;
                 min_blk_id = blkId;
             }
+
+            node2blk_id[nodeId] = blkId;
+            CutSizeType new_cut_size = get_cut_size_of_node(nodeId);
+            node2blk_id[nodeId] = -1;
+            MoveGainType move_gain = orig_cut_size - new_cut_size;
+            // if (max_gain_blk == -1 || move_gain > max_gain) {
+            //     max_gain = move_gain;
+            //     max_gain_blk = blkId;
+            // }
+            auto iter = blk2gain_pairs.begin();
+            while (iter != blk2gain_pairs.end()) {
+                if (move_gain > iter->second) {
+                    break;
+                }
+                ++iter;
+            }
+            blk2gain_pairs.insert(iter, {blkId, move_gain});
         }
     }
 
-    return min_blk_id;
+    //return min_blk_id;
+    //return max_gain_blk;
+    std::queue<IndexType> initial_blks;
+    // for (const auto& pair : blk2gain_pairs) {
+    //     initial_blks.push(pair.first);
+    // }
+    initial_blks.push(min_blk_id);
+    return initial_blks;
 }
 
 template<typename NodeWeightType, typename EdgeWeightType>
@@ -412,26 +497,26 @@ PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_cut_size_of_node(Ind
 }
 
 template<typename NodeWeightType, typename EdgeWeightType>
-bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType nodeId, IndexType new_blk) {
+std::vector<std::pair<IndexType, IndexType>> PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType nodeId, IndexType new_blk) {
+    std::vector<NodeBlockPair> modified_node2blk_pairs;
+
     // move nodeId to new_blk and update partition states
     if (node2blk_id[nodeId] == new_blk) {
-        return true;
+        return modified_node2blk_pairs;
     }
 
     IndexType orig_blk = node2blk_id[nodeId];
     CutSizeType orig_cut_size = get_cut_size_of_node(nodeId);
 
     //
-    if (!node2cddt_blks[nodeId][new_blk]) {
-        return false;
-    }
+    assert(node2cddt_blks[nodeId][new_blk]);
 
     node2blk_id[nodeId] = new_blk;
 
     // update candidate block of neighbors
     int max_dist = get_max_dist_of_blk(new_blk);
     Dist2IndexMap dist2node_map = get_dist2idx_map(netlist_graph, nodeId, max_dist);
-    
+
     for (int dist = 1; dist < dist2node_map.size(); dist++) {
         std::vector<bool> new_cddt_blks(get_blk_num(), false);
         for (IndexType blk : blk2neighbors_map[new_blk][dist]) {
@@ -439,6 +524,15 @@ bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType
         }
 
         for (IndexType nNodeId : dist2node_map[dist]) {
+            // record modified candidate blocks
+            
+            for (IndexType blkId = 0; blkId < get_blk_num(); blkId++) {
+                if (node2cddt_blks[nNodeId][blkId] && !new_cddt_blks[blkId]) {
+                    modified_node2blk_pairs.push_back({nNodeId, blkId});
+                }
+            }
+            
+            // update candidate blocks
             node2cddt_blks[nNodeId] = merge_cddt_blks(node2cddt_blks[nNodeId], new_cddt_blks);
         }
     }
@@ -454,7 +548,7 @@ bool PositionAwarePartition<NodeWeightType, EdgeWeightType>::move_node(IndexType
         blk_sizes[orig_blk] -= node_weight;
     }
     
-    return true;
+    return modified_node2blk_pairs;
 }
 
 template<typename NodeWeightType, typename EdgeWeightType>
@@ -539,6 +633,20 @@ std::vector<bool> PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_cd
         cddt_blks[blkId] = true;
     }
     return cddt_blks;
+}
+
+template<typename NodeWeightType, typename EdgeWeightType>
+EdgeWeightType PositionAwarePartition<NodeWeightType, EdgeWeightType>::get_move_gain(IndexType nodeId, IndexType blkId) {
+    if (node2blk_id[nodeId] == blkId) {
+        return 0;
+    }
+    
+    IndexType orig_blkId = node2blk_id[nodeId];
+    CutSizeType orig_cut_size = get_cut_size_of_node(nodeId);
+    node2blk_id[nodeId] = blkId;
+    CutSizeType new_cut_size = get_cut_size_of_node(nodeId);
+    node2blk_id[nodeId] = orig_blkId;
+    return orig_cut_size - new_cut_size;
 }
 
 template<typename NodeWeightType, typename EdgeWeightType>
